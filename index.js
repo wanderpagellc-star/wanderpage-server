@@ -145,6 +145,7 @@ app.post('/process-pdf', async (req, res) => {
   };
   try {
     const { pdf_url, phrasebook_pages = 0 } = req.body;
+    console.log(`[request] pdf_url=${pdf_url?.slice(0,60)}... phrasebook_pages=${phrasebook_pages}`);
     if (!pdf_url) return res.status(400).json({ error: 'pdf_url required' });
 
     const modifiedBytes = await processPdf(pdf_url, phrasebook_pages);
