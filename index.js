@@ -14,8 +14,8 @@ const CONT_X   = MARGIN;
 const CONT_W   = 595.28 - 2 * MARGIN; // 487.28pt
 const CONT_TOP = PAGE_H - MARGIN;     // 787.89pt (from PDF bottom)
 const CONT_BOT = MARGIN;              // 54pt
-const PX2PT    = CONT_W / 651;        // ≈ 0.7485
-const LINE_H   = 28 * PX2PT;         // ≈ 20.96pt per printed line
+const PX2PT    = 0.75;                // exact CSS px→PDF pt at 72/96 DPI
+const LINE_H   = 28 * PX2PT;         // 21.0pt per printed line
 
 // ─── Shared transparent MK dict ──────────────────────────────────────────────
 let _sharedMkRef = null;
@@ -61,8 +61,8 @@ function addLines(form, pdfDoc, page, pid, headerPx, count) {
 
 /** Restaurant tracker: 3 column fields per row × 30 rows. */
 function addRestaurant(form, pdfDoc, page, pid) {
-  const startY = CONT_TOP - 90 * PX2PT;
-  const rowH   = 21 * PX2PT;
+  const startY = CONT_TOP - 64 * PX2PT;  // 48pt → first row top aligns with y≈739.9
+  const rowH   = 42 * PX2PT;             // 31.5pt → matches actual template row height
   const c1W = CONT_W * 0.38;
   const c2W = CONT_W * 0.42;
   const c3W = CONT_W * 0.20;
@@ -130,7 +130,7 @@ async function processPdf(pdfUrl, phrasebookPages) {
     } else if (i === 117 || i === 118) {
       addLines(form, pdfDoc, page, i, 34, 27);
     } else {
-      addLines(form, pdfDoc, page, i, 0, 34);
+      addLines(form, pdfDoc, page, i, 55, 34);  // headerPx=55 → first field at y≈746.7
     }
   }
 
