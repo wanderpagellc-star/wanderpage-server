@@ -75,22 +75,68 @@ function addRestaurant(form, pdfDoc, page, pid) {
   }
 }
 
-/** Packing list: one checkbox per item row. */
+/** Packing list: one checkbox per item, positioned to match template layout exactly. */
 function addPackingList(form, pdfDoc, page, pid) {
-  // Checkboxes sit in the left gutter where the printed checkbox squares are.
-  // The packing list has 3 columns; each row is ~18px tall.
-  const cbSize  = 10;
-  const rowH    = 18 * PX2PT;
-  const startY  = CONT_TOP - 95 * PX2PT;  // below the section headers
-  const colXs   = [CONT_X, CONT_X + CONT_W * 0.36, CONT_X + CONT_W * 0.68];
-  const rowsPerCol = 30;
-  for (let col = 0; col < 3; col++) {
-    for (let row = 0; row < rowsPerCol; row++) {
-      const y = startY - (row + 1) * rowH;
-      if (y < CONT_BOT - 1) break;
-      addCheckbox(form, pdfDoc, page, `pk_${pid}_${col}_${row}`, colXs[col], y + 2, cbSize);
+  // 3-column CSS grid: (651px total - 2×10px gaps) / 3 = 210.33px per column
+  const COL_W = (651 - 20) / 3;
+  const GAP   = 10;
+  // Checkbox x = column_left_px + pack-qty(16px), converted to PDF pts
+  const colXs = [0, COL_W + GAP, 2 * (COL_W + GAP)].map(cx => CONT_X + (cx + 16) * PX2PT);
+
+  const cbSize  = 8;   // pt — matches visual .pack-box size (8px)
+  const TITLE_H = 43;  // px — pack-title height + margin-bottom
+  const HEAD_H  = 26;  // px — pack-head including margins
+  const SUB_H   = 15;  // px — pack-sub
+  const ITEM_H  = 14;  // px — pack-item / pack-blank min-height
+
+  // Grid starts below title
+  const gridTopY = CONT_TOP - TITLE_H * PX2PT;
+
+  // Layout strings: H=section header, S=sub-header, I=item checkbox, _=blank row
+  function drawItems(colIdx, layout) {
+    let y = gridTopY;
+    let idx = 0;
+    for (const el of layout) {
+      const hPx = el === 'H' ? HEAD_H : el === 'S' ? SUB_H : ITEM_H;
+      y -= hPx * PX2PT;
+      if (el === 'I') {
+        const cbY = y + (ITEM_H * PX2PT - cbSize) / 2;
+        if (cbY > CONT_BOT)
+          addCheckbox(form, pdfDoc, page, `pk_${pid}_${colIdx}_${idx++}`, colXs[colIdx], cbY, cbSize);
+      }
     }
   }
+
+  // Column 0: Documents (9) + Toiletries (20)
+  drawItems(0, [
+    'H','I','I','I','I','I','I','I','I','I',
+    '_','_',
+    'H','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I',
+    '_','_',
+  ]);
+
+  // Column 1: Financials (3) + Gadgets (10) + Health/Medical (8) + Miscellaneous (6)
+  drawItems(1, [
+    'H','I','I','I',
+    '_','_',
+    'H','I','I','I','I','I','I','I','I','I','I',
+    '_','_',
+    'H','I','I','I','I','I','I','I','I',
+    '_','_',
+    'H','I','I','I','I','I','I',
+    '_','_',
+  ]);
+
+  // Column 2: Clothes/Shoes with sub-sections
+  drawItems(2, [
+    'H',
+    'S','I','I','I','I','I',            // Essentials (5)
+    'S','I','I','I','I','I','I','I',    // Casual (7)
+    'S','I','I','I','I','I','I',        // Formal (6)
+    'S','I','I','I','I','I','I',        // Shoes (6)
+    'S','I','I','I','I','I','I',        // Accessories (6)
+    '_','_',
+  ]);
 }
 
 async function processPdf(pdfUrl, phrasebookPages) {
@@ -130,7 +176,7 @@ async function processPdf(pdfUrl, phrasebookPages) {
     } else if (i === 117 || i === 118) {
       addLines(form, pdfDoc, page, i, 34, 27);
     } else {
-      addLines(form, pdfDoc, page, i, 55, 34);  // headerPx=55 → first field at y≈746.7
+      addLines(form, pdfDoc, page, i, 55, 34);
     }
   }
 
