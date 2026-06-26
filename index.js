@@ -59,10 +59,28 @@ function addLines(form, pdfDoc, page, pid, headerPx, count) {
   }
 }
 
+/** Photo page: one large button field users can click to place an image. */
+function addPhotoField(form, pdfDoc, page, pid) {
+  try {
+    const btn = form.createButton(`photo_${pid}`);
+    btn.addToPage(page, {
+      x: CONT_X,
+      y: CONT_BOT,
+      width: CONT_W,
+      height: CONT_TOP - CONT_BOT,
+      borderWidth: 0,
+    });
+    const mkRef = getSharedMk(pdfDoc);
+    for (const widget of btn.acroField.getWidgets()) {
+      widget.dict.set(PDFName.of('MK'), mkRef);
+    }
+  } catch (_) {}
+}
+
 /** Restaurant tracker: 3 column fields per row × 30 rows. */
 function addRestaurant(form, pdfDoc, page, pid) {
-  const startY = CONT_TOP - 64 * PX2PT;  // 48pt → first row top aligns with y≈739.9
-  const rowH   = 42 * PX2PT;             // 31.5pt → matches actual template row height
+  const startY = CONT_TOP - 64 * PX2PT;
+  const rowH   = 42 * PX2PT;
   const c1W = CONT_W * 0.38;
   const c2W = CONT_W * 0.42;
   const c3W = CONT_W * 0.20;
@@ -77,22 +95,18 @@ function addRestaurant(form, pdfDoc, page, pid) {
 
 /** Packing list: one checkbox per item, positioned to match template layout exactly. */
 function addPackingList(form, pdfDoc, page, pid) {
-  // 3-column CSS grid: (651px total - 2×10px gaps) / 3 = 210.33px per column
   const COL_W = (651 - 20) / 3;
   const GAP   = 10;
-  // Checkbox x = column_left_px + pack-qty(16px), converted to PDF pts
   const colXs = [0, COL_W + GAP, 2 * (COL_W + GAP)].map(cx => CONT_X + (cx + 16) * PX2PT);
 
-  const cbSize  = 8;   // pt — matches visual .pack-box size (8px)
-  const TITLE_H = 43;  // px — pack-title height + margin-bottom
-  const HEAD_H  = 26;  // px — pack-head including margins
-  const SUB_H   = 15;  // px — pack-sub
-  const ITEM_H  = 14;  // px — pack-item / pack-blank min-height
+  const cbSize  = 8;
+  const TITLE_H = 43;
+  const HEAD_H  = 26;
+  const SUB_H   = 15;
+  const ITEM_H  = 14;
 
-  // Grid starts below title
   const gridTopY = CONT_TOP - TITLE_H * PX2PT;
 
-  // Layout strings: H=section header, S=sub-header, I=item checkbox, _=blank row
   function drawItems(colIdx, layout) {
     let y = gridTopY;
     let idx = 0;
@@ -107,7 +121,6 @@ function addPackingList(form, pdfDoc, page, pid) {
     }
   }
 
-  // Column 0: Documents (9) + Toiletries (20)
   drawItems(0, [
     'H','I','I','I','I','I','I','I','I','I',
     '_','_',
@@ -115,7 +128,6 @@ function addPackingList(form, pdfDoc, page, pid) {
     '_','_',
   ]);
 
-  // Column 1: Financials (3) + Gadgets (10) + Health/Medical (8) + Miscellaneous (6)
   drawItems(1, [
     'H','I','I','I',
     '_','_',
@@ -127,14 +139,13 @@ function addPackingList(form, pdfDoc, page, pid) {
     '_','_',
   ]);
 
-  // Column 2: Clothes/Shoes with sub-sections
   drawItems(2, [
     'H',
-    'S','I','I','I','I','I',            // Essentials (5)
-    'S','I','I','I','I','I','I','I',    // Casual (7)
-    'S','I','I','I','I','I','I',        // Formal (6)
-    'S','I','I','I','I','I','I',        // Shoes (6)
-    'S','I','I','I','I','I','I',        // Accessories (6)
+    'S','I','I','I','I','I',
+    'S','I','I','I','I','I','I','I',
+    'S','I','I','I','I','I','I',
+    'S','I','I','I','I','I','I',
+    'S','I','I','I','I','I','I',
     '_','_',
   ]);
 }
@@ -161,7 +172,10 @@ async function processPdf(pdfUrl, phrasebookPages) {
   for (let i = 0; i < pageCount; i++) {
     if (i === 0)              continue; // cover
     if (i >= 1 && i <= PB)   continue; // phrasebook
-    if (i >= 96 && i <= 115) continue; // photo pages
+    if (i >= 96 && i <= 115) {         // photo pages — clickable image field
+      addPhotoField(form, pdfDoc, pdfDoc.getPage(i), i);
+      continue;
+    }
 
     const page = pdfDoc.getPage(i);
 
@@ -196,7 +210,6 @@ app.post('/process-pdf', async (req, res) => {
 
     const modifiedBytes = await processPdf(pdf_url, phrasebook_pages);
 
-    // Upload to Cloudinary
     const fd = new FormData();
     fd.append('file', new Blob([modifiedBytes], { type: 'application/pdf' }), 'journal.pdf');
     fd.append('upload_preset', CLOUDINARY_PRESET);
@@ -223,4 +236,5 @@ app.options('/process-pdf', (req, res) => res.set({
 app.get('/health', (_, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Wanderpage PDF server on port ${PORT}`));
