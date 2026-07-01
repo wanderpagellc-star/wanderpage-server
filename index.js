@@ -136,8 +136,8 @@ function addPhotoField(form, pdfDoc, page, pid) {
 }
 
 function addRestaurant(form, pdfDoc, page, pid) {
-  const startY = CONT_TOP - 64 * PX2PT;
-  const rowH   = 42 * PX2PT;
+  const startY = CONT_TOP - 86 * PX2PT;  // title(28) + subtitle(32) + table margin(6) + th header(20)
+  const rowH   = 21 * PX2PT;             // matches td height: 21px in CSS
   const c1W = CONT_W * 0.38;
   const c2W = CONT_W * 0.42;
   const c3W = CONT_W * 0.20;
