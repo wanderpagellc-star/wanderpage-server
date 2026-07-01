@@ -209,8 +209,8 @@ function addPackingList(form, pdfDoc, page, pid) {
 async function processPdf(pdfUrl, phrasebookPages, numDays) {
   const PB        = Math.max(0, parseInt(phrasebookPages) || 0);
   const N         = Math.max(0, parseInt(numDays) || 0);
-  const P_PACK    = PB + 1;
-  const P_BKT     = PB + 2;
+  const P_BKT     = PB + 1;  // bucket list comes first in template
+  const P_PACK    = PB + 2;  // packing list is second
   const P_REST    = PB + 3;
   const DAY_START = PB + 4;
   const DAY_END   = DAY_START + N * 2; // first page after all day pairs
@@ -228,7 +228,7 @@ async function processPdf(pdfUrl, phrasebookPages, numDays) {
   form.acroForm.dict.set(PDFName.of('NeedAppearances'), pdfDoc.context.obj(true));
 
   const pageCount = pdfDoc.getPageCount();
-  console.log(`[layout] pageCount=${pageCount} PB=${PB} N=${N} P_PACK=${P_PACK} P_BKT=${P_BKT} P_REST=${P_REST} DAY_START=${DAY_START} DAY_END=${DAY_END}`);
+  console.log(`[layout] pageCount=${pageCount} PB=${PB} N=${N} P_BKT=${P_BKT} P_PACK=${P_PACK} P_REST=${P_REST} DAY_START=${DAY_START} DAY_END=${DAY_END}`);
   if (DAY_END > 95) console.error(`[layout] WARNING: DAY_END=${DAY_END} exceeds photo section boundary (95). phrasebook_pages may be wrong.`);
 
   for (let i = 0; i < pageCount; i++) {
