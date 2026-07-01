@@ -7,17 +7,15 @@ app.use(express.json());
 const CLOUDINARY_CLOUD  = 'dsepimnas';
 const CLOUDINARY_PRESET = 'wanderpage_pdfs';
 
-// ─── A4 layout constants ─────────────────────────────────────────────────────
 const PAGE_H   = 841.89;
 const MARGIN   = 54;
 const CONT_X   = MARGIN;
-const CONT_W   = 595.28 - 2 * MARGIN; // 487.28pt
-const CONT_TOP = PAGE_H - MARGIN;     // 787.89pt (from PDF bottom)
-const CONT_BOT = MARGIN;              // 54pt
-const PX2PT    = 0.75;                // exact CSS px→PDF pt at 72/96 DPI
-const LINE_H   = 28 * PX2PT;         // 21.0pt per printed line
+const CONT_W   = 595.28 - 2 * MARGIN;
+const CONT_TOP = PAGE_H - MARGIN;
+const CONT_BOT = MARGIN;
+const PX2PT    = 0.75;
+const LINE_H   = 28 * PX2PT;
 
-// ─── Shared transparent MK dict ──────────────────────────────────────────────
 let _sharedMkRef = null;
 function getSharedMk(pdfDoc) {
   if (!_sharedMkRef) {
@@ -48,7 +46,7 @@ function addCheckbox(form, pdfDoc, page, name, x, y, size) {
   } catch (_) {}
 }
 
-/** 34 text fields per page, one per printed line. */
+// Original addLines — used for all non-day pages (bucket list, reflections, fillers, etc.)
 function addLines(form, pdfDoc, page, pid, headerPx, count) {
   const topY = CONT_TOP - headerPx * PX2PT;
   const rows  = Math.min(count, Math.floor((topY - CONT_BOT) / LINE_H));
@@ -59,7 +57,67 @@ function addLines(form, pdfDoc, page, pid, headerPx, count) {
   }
 }
 
-/** Photo page: one large button field users can click to place an image. */
+// Add fields within a vertical range (CSS px offsets from content top).
+// startPx: where fields begin. endPx: where fields end (omit = page bottom).
+// fieldX / fieldW: optional overrides for x position and width (in pt).
+function addLineRange(form, pdfDoc, page, namePrefix, startPx, endPx, fieldX, fieldW) {
+  const x = (fieldX !== undefined) ? fieldX : CONT_X;
+  const w = (fieldW !== undefined) ? fieldW : CONT_W;
+  if (w < 1) return;
+  const topY = CONT_TOP - startPx * PX2PT;
+  const botY = (endPx !== undefined) ? Math.max(CONT_TOP - endPx * PX2PT, CONT_BOT) : CONT_BOT;
+  let idx = 0;
+  let y   = topY - LINE_H;
+  while (y >= botY - 1) {
+    addText(form, pdfDoc, page, `${namePrefix}_${idx}`, x, y, w, LINE_H);
+    idx++;
+    y -= LINE_H;
+  }
+}
+
+// Layout-aware AcroForm fields for day pages with illustrations.
+// layout: 0 = top, 1 = middle, 2 = bottom  (matches PDFMonkey cycle order)
+//
+// Pixel layout reference (CSS px from content top, content area = 979px):
+//   TOP:    header 0-55 | img-top 55-425 | 17 lines 425-901
+//   MIDDLE: header 0-55 | 10 lines 55-335 | grid-left 335-695 (42% img left | 58% lines right) | lines 695+
+//   BOTTOM: header 0-55 | 17 lines 55-531 | grid-right 531-891 (58% lines left | 42% img right)
+function addDayFields(form, pdfDoc, page, pid, layout) {
+  // Grid column dimensions (pt)
+  const IMG_COL  = 0.42 * CONT_W;          // image column (42%)
+  const GAP      = 12 * PX2PT;             // grid gap (12px → 9pt)
+  const LINE_COL = CONT_W - IMG_COL - GAP; // lines column (~273.6pt)
+  const RIGHT_X  = CONT_X + IMG_COL + GAP; // x-start of right column
+
+  // Pixel offsets
+  const HEADER  = 55;   // day header height (px)
+  const IMG_H   = 360;  // illustration height (px)
+  const IMG_MRG = 10;   // margin-bottom on img-top (px)
+  const LN      = 28;   // line height (px)
+
+  if (layout === 0) {
+    // TOP: image fills 55→425px; fields start below image
+    const imgEnd = HEADER + IMG_H + IMG_MRG; // 425px
+    addLineRange(form, pdfDoc, page, `l_${pid}`, imgEnd);
+
+  } else if (layout === 1) {
+    // MIDDLE: 10 full-width lines, then grid-left (42% img | 58% lines), then full-width lines
+    const gridStart = HEADER + 10 * LN;  // 335px
+    const gridEnd   = gridStart + IMG_H; // 695px
+    addLineRange(form, pdfDoc, page, `l_${pid}_a`, HEADER,    gridStart);
+    addLineRange(form, pdfDoc, page, `l_${pid}_g`, gridStart, gridEnd,   RIGHT_X, LINE_COL);
+    addLineRange(form, pdfDoc, page, `l_${pid}_b`, gridEnd);
+
+  } else {
+    // BOTTOM: 17 full-width lines, then grid-right (58% lines | 42% img)
+    const gridStart = HEADER + 17 * LN;  // 531px
+    const gridEnd   = gridStart + IMG_H; // 891px
+    addLineRange(form, pdfDoc, page, `l_${pid}_a`, HEADER,    gridStart);
+    addLineRange(form, pdfDoc, page, `l_${pid}_g`, gridStart, gridEnd,   CONT_X, LINE_COL);
+    // Only ~88px remains below grid — skip
+  }
+}
+
 function addPhotoField(form, pdfDoc, page, pid) {
   try {
     const btn = form.createButton(`photo_${pid}`);
@@ -77,7 +135,6 @@ function addPhotoField(form, pdfDoc, page, pid) {
   } catch (_) {}
 }
 
-/** Restaurant tracker: 3 column fields per row × 30 rows. */
 function addRestaurant(form, pdfDoc, page, pid) {
   const startY = CONT_TOP - 64 * PX2PT;
   const rowH   = 42 * PX2PT;
@@ -93,7 +150,6 @@ function addRestaurant(form, pdfDoc, page, pid) {
   }
 }
 
-/** Packing list: one checkbox per item, positioned to match template layout exactly. */
 function addPackingList(form, pdfDoc, page, pid) {
   const COL_W = (651 - 20) / 3;
   const GAP   = 10;
@@ -150,11 +206,14 @@ function addPackingList(form, pdfDoc, page, pid) {
   ]);
 }
 
-async function processPdf(pdfUrl, phrasebookPages) {
-  const PB     = Math.max(0, parseInt(phrasebookPages) || 0);
-  const P_PACK = PB + 1;
-  const P_BKT  = PB + 2;
-  const P_REST = PB + 3;
+async function processPdf(pdfUrl, phrasebookPages, numDays) {
+  const PB        = Math.max(0, parseInt(phrasebookPages) || 0);
+  const N         = Math.max(0, parseInt(numDays) || 0);
+  const P_PACK    = PB + 1;
+  const P_BKT     = PB + 2;
+  const P_REST    = PB + 3;
+  const DAY_START = PB + 4;
+  const DAY_END   = DAY_START + N * 2; // first page after all day pairs
 
   const pdfResp = await fetch(pdfUrl);
   if (!pdfResp.ok) throw new Error(`Download failed: ${pdfResp.status}`);
@@ -170,9 +229,9 @@ async function processPdf(pdfUrl, phrasebookPages) {
 
   const pageCount = pdfDoc.getPageCount();
   for (let i = 0; i < pageCount; i++) {
-    if (i === 0)              continue; // cover
-    if (i >= 1 && i <= PB)   continue; // phrasebook
-    if (i >= 96 && i <= 115) {         // photo pages — clickable image field
+    if (i === 0)            continue; // cover
+    if (i >= 1 && i <= PB) continue; // phrasebook
+    if (i >= 96 && i <= 115) {
       addPhotoField(form, pdfDoc, pdfDoc.getPage(i), i);
       continue;
     }
@@ -189,7 +248,13 @@ async function processPdf(pdfUrl, phrasebookPages) {
       addLines(form, pdfDoc, page, i, 112, 24);
     } else if (i === 117 || i === 118) {
       addLines(form, pdfDoc, page, i, 34, 27);
+    } else if (N > 0 && i >= DAY_START && i < DAY_END && (i - DAY_START) % 2 === 0) {
+      // Day page with illustration — layout determined by position in cycle
+      const dayIndex = (i - DAY_START) / 2; // 0-based
+      const layout   = dayIndex % 3;         // 0=top, 1=middle, 2=bottom
+      addDayFields(form, pdfDoc, page, i, layout);
     } else {
+      // Filler pages, extra journal pages, reflection free-write page
       addLines(form, pdfDoc, page, i, 55, 34);
     }
   }
@@ -204,11 +269,11 @@ app.post('/process-pdf', async (req, res) => {
     'Access-Control-Allow-Headers': 'Content-Type',
   };
   try {
-    const { pdf_url, phrasebook_pages = 0 } = req.body;
-    console.log(`[request] pdf_url=${pdf_url?.slice(0,60)}... phrasebook_pages=${phrasebook_pages}`);
+    const { pdf_url, phrasebook_pages = 0, num_days = 0 } = req.body;
+    console.log(`[request] pdf_url=${pdf_url?.slice(0,60)}... phrasebook_pages=${phrasebook_pages} num_days=${num_days}`);
     if (!pdf_url) return res.status(400).json({ error: 'pdf_url required' });
 
-    const modifiedBytes = await processPdf(pdf_url, phrasebook_pages);
+    const modifiedBytes = await processPdf(pdf_url, phrasebook_pages, num_days);
 
     const fd = new FormData();
     fd.append('file', new Blob([modifiedBytes], { type: 'application/pdf' }), 'journal.pdf');
@@ -236,5 +301,4 @@ app.options('/process-pdf', (req, res) => res.set({
 app.get('/health', (_, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Wanderpage PDF server on port ${PORT}`));
