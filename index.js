@@ -228,6 +228,9 @@ async function processPdf(pdfUrl, phrasebookPages, numDays) {
   form.acroForm.dict.set(PDFName.of('NeedAppearances'), pdfDoc.context.obj(true));
 
   const pageCount = pdfDoc.getPageCount();
+  console.log(`[layout] pageCount=${pageCount} PB=${PB} N=${N} P_PACK=${P_PACK} P_BKT=${P_BKT} P_REST=${P_REST} DAY_START=${DAY_START} DAY_END=${DAY_END}`);
+  if (DAY_END > 95) console.error(`[layout] WARNING: DAY_END=${DAY_END} exceeds photo section boundary (95). phrasebook_pages may be wrong.`);
+
   for (let i = 0; i < pageCount; i++) {
     if (i === 0)            continue; // cover
     if (i >= 1 && i <= PB) continue; // phrasebook
