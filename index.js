@@ -17,6 +17,7 @@ const PX2PT    = 0.75;
 const LINE_H   = 28 * PX2PT;
 
 let _sharedMkRef = null;
+
 function getSharedMk(pdfDoc) {
   if (!_sharedMkRef) {
     const mk = pdfDoc.context.obj({});
@@ -46,7 +47,7 @@ function addCheckbox(form, pdfDoc, page, name, x, y, size) {
   } catch (_) {}
 }
 
-// Original addLines — used for all non-day pages (bucket list, reflections, fillers, etc.)
+// Standard line-fill helper — used for bucket list, reflections, filler pages, etc.
 function addLines(form, pdfDoc, page, pid, headerPx, count) {
   const topY = CONT_TOP - headerPx * PX2PT;
   const rows  = Math.min(count, Math.floor((topY - CONT_BOT) / LINE_H));
@@ -57,9 +58,9 @@ function addLines(form, pdfDoc, page, pid, headerPx, count) {
   }
 }
 
-// Add fields within a vertical range (CSS px offsets from content top).
-// startPx: where fields begin. endPx: where fields end (omit = page bottom).
-// fieldX / fieldW: optional overrides for x position and width (in pt).
+// Fills a vertical range (CSS px offsets from content top) with as many lines as fit.
+// Row count is computed dynamically from available space — no hardcoded counts needed,
+// so changing IMG_H/IMG_COL below automatically yields fewer/more lines with no other changes.
 function addLineRange(form, pdfDoc, page, namePrefix, startPx, endPx, fieldX, fieldW) {
   const x = (fieldX !== undefined) ? fieldX : CONT_X;
   const w = (fieldW !== undefined) ? fieldW : CONT_W;
@@ -75,46 +76,40 @@ function addLineRange(form, pdfDoc, page, namePrefix, startPx, endPx, fieldX, fi
   }
 }
 
-// Layout-aware AcroForm fields for day pages with illustrations.
-// layout: 0 = top, 1 = middle, 2 = bottom  (matches PDFMonkey cycle order)
+// Layout-aware AcroForm fields for the illustrated day page (1 of the 2 pages per day).
+// layout: 0 = top, 1 = middle, 2 = bottom (matches PDFMonkey cycle order)
 //
-// Pixel layout reference (CSS px from content top, content area = 979px):
-//   TOP:    header 0-55 | img-top 55-425 | 17 lines 425-901
-//   MIDDLE: header 0-55 | 10 lines 55-335 | grid-left 335-695 (42% img left | 58% lines right) | lines 695+
-//   BOTTOM: header 0-55 | 17 lines 55-531 | grid-right 531-891 (58% lines left | 42% img right)
+// ADJUSTMENT 4: middle/bottom image column widened from 42% to 55% of content width,
+// and image height increased ~30% (360px -> 468px) to match. Top layout is untouched —
+// it was already correctly sized. Line counts around the bigger image shrink automatically
+// via addLineRange's dynamic fill; per Nicole's approval, losing lines here is fine since
+// every day also has a full second page (the plain journal page) right after this one.
 function addDayFields(form, pdfDoc, page, pid, layout) {
-  // Grid column dimensions (pt)
-  const IMG_COL  = 0.42 * CONT_W;          // image column (42%)
-  const GAP      = 12 * PX2PT;             // grid gap (12px → 9pt)
-  const LINE_COL = CONT_W - IMG_COL - GAP; // lines column (~273.6pt)
-  const RIGHT_X  = CONT_X + IMG_COL + GAP; // x-start of right column
+  const HEADER      = 55;
+  const IMG_H_TOP   = 360;   // top layout — unchanged, already correct size
+  const IMG_H_MIDBOT = 468;  // middle/bottom layout — 360 * 1.30 (Adjustment 4, locked at 30%)
+  const IMG_MRG     = 10;
+  const LN          = 28;
 
-  // Pixel offsets
-  const HEADER  = 55;   // day header height (px)
-  const IMG_H   = 360;  // illustration height (px)
-  const IMG_MRG = 10;   // margin-bottom on img-top (px)
-  const LN      = 28;   // line height (px)
+  const IMG_COL  = 0.55 * CONT_W;  // was 0.42 — Adjustment 4
+  const GAP      = 12 * PX2PT;
+  const LINE_COL = CONT_W - IMG_COL - GAP;
+  const RIGHT_X  = CONT_X + IMG_COL + GAP;
 
   if (layout === 0) {
-    // TOP: image fills 55→425px; fields start below image
-    const imgEnd = HEADER + IMG_H + IMG_MRG; // 425px
+    const imgEnd = HEADER + IMG_H_TOP + IMG_MRG;
     addLineRange(form, pdfDoc, page, `l_${pid}`, imgEnd);
-
   } else if (layout === 1) {
-    // MIDDLE: 10 full-width lines, then grid-left (42% img | 58% lines), then full-width lines
-    const gridStart = HEADER + 10 * LN;  // 335px
-    const gridEnd   = gridStart + IMG_H; // 695px
+    const gridStart = HEADER + 10 * LN;
+    const gridEnd   = gridStart + IMG_H_MIDBOT;
     addLineRange(form, pdfDoc, page, `l_${pid}_a`, HEADER,    gridStart);
     addLineRange(form, pdfDoc, page, `l_${pid}_g`, gridStart, gridEnd,   RIGHT_X, LINE_COL);
     addLineRange(form, pdfDoc, page, `l_${pid}_b`, gridEnd);
-
   } else {
-    // BOTTOM: 17 full-width lines, then grid-right (58% lines | 42% img)
-    const gridStart = HEADER + 17 * LN;  // 531px
-    const gridEnd   = gridStart + IMG_H; // 891px
+    const gridStart = HEADER + 17 * LN;
+    const gridEnd   = gridStart + IMG_H_MIDBOT;
     addLineRange(form, pdfDoc, page, `l_${pid}_a`, HEADER,    gridStart);
     addLineRange(form, pdfDoc, page, `l_${pid}_g`, gridStart, gridEnd,   CONT_X, LINE_COL);
-    // Only ~88px remains below grid — skip
   }
 }
 
@@ -122,10 +117,8 @@ function addPhotoField(form, pdfDoc, page, pid) {
   try {
     const btn = form.createButton(`photo_${pid}`);
     btn.addToPage(page, {
-      x: CONT_X,
-      y: CONT_BOT,
-      width: CONT_W,
-      height: CONT_TOP - CONT_BOT,
+      x: CONT_X, y: CONT_BOT,
+      width: CONT_W, height: CONT_TOP - CONT_BOT,
       borderWidth: 0,
     });
     const mkRef = getSharedMk(pdfDoc);
@@ -136,8 +129,8 @@ function addPhotoField(form, pdfDoc, page, pid) {
 }
 
 function addRestaurant(form, pdfDoc, page, pid) {
-  const startY = CONT_TOP - 86 * PX2PT;  // title(28) + subtitle(32) + table margin(6) + th header(20)
-  const rowH   = 21 * PX2PT;             // matches td height: 21px in CSS
+  const startY = CONT_TOP - 86 * PX2PT;
+  const rowH   = 21 * PX2PT;
   const c1W = CONT_W * 0.38;
   const c2W = CONT_W * 0.42;
   const c3W = CONT_W * 0.20;
@@ -154,13 +147,11 @@ function addPackingList(form, pdfDoc, page, pid) {
   const COL_W = (651 - 20) / 3;
   const GAP   = 10;
   const colXs = [0, COL_W + GAP, 2 * (COL_W + GAP)].map(cx => CONT_X + (cx + 16) * PX2PT);
-
   const cbSize  = 8;
   const TITLE_H = 43;
   const HEAD_H  = 26;
   const SUB_H   = 15;
   const ITEM_H  = 14;
-
   const gridTopY = CONT_TOP - TITLE_H * PX2PT;
 
   function drawItems(colIdx, layout) {
@@ -177,43 +168,42 @@ function addPackingList(form, pdfDoc, page, pid) {
     }
   }
 
-  drawItems(0, [
-    'H','I','I','I','I','I','I','I','I','I',
-    '_','_',
-    'H','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I',
-    '_','_',
-  ]);
-
-  drawItems(1, [
-    'H','I','I','I',
-    '_','_',
-    'H','I','I','I','I','I','I','I','I','I','I',
-    '_','_',
-    'H','I','I','I','I','I','I','I','I',
-    '_','_',
-    'H','I','I','I','I','I','I',
-    '_','_',
-  ]);
-
-  drawItems(2, [
-    'H',
-    'S','I','I','I','I','I',
-    'S','I','I','I','I','I','I','I',
-    'S','I','I','I','I','I','I',
-    'S','I','I','I','I','I','I',
-    'S','I','I','I','I','I','I',
-    '_','_',
-  ]);
+  drawItems(0, ['H','I','I','I','I','I','I','I','I','I','_','_','H','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','I','_','_']);
+  drawItems(1, ['H','I','I','I','_','_','H','I','I','I','I','I','I','I','I','I','I','_','_','H','I','I','I','I','I','I','I','I','_','_','H','I','I','I','I','I','I','_','_']);
+  drawItems(2, ['H','S','I','I','I','I','I','S','I','I','I','I','I','I','I','S','I','I','I','I','I','I','S','I','I','I','I','I','I','S','I','I','I','I','I','I','_','_']);
 }
 
 async function processPdf(pdfUrl, phrasebookPages, numDays) {
-  const PB        = Math.max(0, parseInt(phrasebookPages) || 0);
-  const N         = Math.max(0, parseInt(numDays) || 0);
-  const P_PACK    = PB + 1;  // packing list (first after phrasebook in template)
-  const P_BKT     = PB + 2;  // bucket list (second)
-  const P_REST    = PB + 3;
-  const DAY_START = PB + 4;
-  const DAY_END   = DAY_START + N * 2; // first page after all day pairs
+  const PB = Math.max(0, parseInt(phrasebookPages) || 0);
+  const N  = Math.max(0, parseInt(numDays) || 0);
+
+  // ---- Page index map (see catchup doc for full derivation) ----
+  // idx 0            : Cover
+  // idx 1            : Title page (Adjustment 1) — static, no fields
+  // idx 2            : Blank (Adjustment 2)
+  // idx 3..(2+PB)     : Phrasebook
+  // idx (3+PB)        : Packing List
+  // idx (4+PB)        : Blank (Adjustment 3)
+  // idx (5+PB)        : Travel Bucket List
+  // idx (6+PB)        : Blank (Adjustment 3)
+  // idx (7+PB)        : Restaurant Tracker
+  // idx (8+PB)..(7+PB+2N-1) : Day pages (illustrated + full journal, alternating)
+  // next 10 pages     : Illustration section — 5x [blank, illustration] (Adjustment 5)
+  // next 1 page       : "And Now, Room for More" title page (Adjustment 6) — static, no fields
+  // next K pages      : Free journal filler pages
+  // idx 96-115        : Photo pages (20, unchanged)
+  // idx 116-119       : Post-Trip Reflections (4, unchanged)
+
+  const P_PACK       = PB + 3;
+  const P_BKT        = PB + 5;
+  const P_REST       = PB + 7;
+  const DAY_START    = PB + 8;
+  const DAY_END      = DAY_START + N * 2;
+  const ILLUS_START  = DAY_END;
+  const ILLUS_END    = DAY_END + 10;   // exclusive
+  const ROOM_PAGE    = DAY_END + 10;
+  const FILLER_START = DAY_END + 11;
+  const FILLER_END   = 95;             // inclusive; page 96 is first photo page
 
   const pdfResp = await fetch(pdfUrl);
   if (!pdfResp.ok) throw new Error(`Download failed: ${pdfResp.status}`);
@@ -228,19 +218,26 @@ async function processPdf(pdfUrl, phrasebookPages, numDays) {
   form.acroForm.dict.set(PDFName.of('NeedAppearances'), pdfDoc.context.obj(true));
 
   const pageCount = pdfDoc.getPageCount();
-  console.log(`[layout] pageCount=${pageCount} PB=${PB} N=${N} P_PACK=${P_PACK} P_BKT=${P_BKT} P_REST=${P_REST} DAY_START=${DAY_START} DAY_END=${DAY_END}`);
-  if (DAY_END > 95) console.error(`[layout] WARNING: DAY_END=${DAY_END} exceeds photo section boundary (95). phrasebook_pages may be wrong.`);
+  console.log(`[layout] pageCount=${pageCount} PB=${PB} N=${N} P_PACK=${P_PACK} P_BKT=${P_BKT} P_REST=${P_REST} DAY_START=${DAY_START} DAY_END=${DAY_END} ILLUS_START=${ILLUS_START} ILLUS_END=${ILLUS_END} ROOM_PAGE=${ROOM_PAGE} FILLER_START=${FILLER_START}`);
+  if (FILLER_START > 96) console.error(`[layout] WARNING: FILLER_START=${FILLER_START} exceeds photo section boundary (96) — trip too long for template.`);
 
   for (let i = 0; i < pageCount; i++) {
-    if (i === 0)            continue; // cover
-    if (i >= 1 && i <= PB) continue; // phrasebook
+    // Cover, title page, and the 3 new blank pages have no interactive fields
+    if (i === 0) continue;
+    if (i === 1) continue;                      // title page (Adjustment 1)
+    if (i === 2) continue;                       // blank before phrasebook (Adjustment 2)
+    if (i >= 3 && i <= 2 + PB) continue;          // phrasebook
+    if (i === 4 + PB) continue;                   // blank before bucket list (Adjustment 3)
+    if (i === 6 + PB) continue;                   // blank before restaurant tracker (Adjustment 3)
+    if (i >= ILLUS_START && i < ILLUS_END) continue; // illustration section — blanks + illustrations, no fields (Adjustment 5)
+    if (i === ROOM_PAGE) continue;                // "And Now, Room for More" title page (Adjustment 6) — static, no fields
+
     if (i >= 96 && i <= 115) {
       addPhotoField(form, pdfDoc, pdfDoc.getPage(i), i);
       continue;
     }
 
     const page = pdfDoc.getPage(i);
-
     if (i === P_PACK) {
       addPackingList(form, pdfDoc, page, i);
     } else if (i === P_BKT) {
@@ -252,16 +249,14 @@ async function processPdf(pdfUrl, phrasebookPages, numDays) {
     } else if (i === 117 || i === 118) {
       addLines(form, pdfDoc, page, i, 34, 27);
     } else if (N > 0 && i >= DAY_START && i < DAY_END && (i - DAY_START) % 2 === 0) {
-      // Day page with illustration — layout determined by position in cycle
-      const dayIndex = (i - DAY_START) / 2; // 0-based
-      const layout   = dayIndex % 3;         // 0=top, 1=middle, 2=bottom
+      const dayIndex = (i - DAY_START) / 2;
+      const layout   = dayIndex % 3;
       addDayFields(form, pdfDoc, page, i, layout);
     } else {
-      // Filler pages, extra journal pages, reflection free-write page
+      // covers: odd day-index pages (the full plain journal page per day), and filler pages
       addLines(form, pdfDoc, page, i, 55, 34);
     }
   }
-
   return pdfDoc.save();
 }
 
@@ -275,9 +270,7 @@ app.post('/process-pdf', async (req, res) => {
     const { pdf_url, phrasebook_pages = 0, num_days = 0 } = req.body;
     console.log(`[request] pdf_url=${pdf_url?.slice(0,60)}... phrasebook_pages=${phrasebook_pages} num_days=${num_days}`);
     if (!pdf_url) return res.status(400).json({ error: 'pdf_url required' });
-
     const modifiedBytes = await processPdf(pdf_url, phrasebook_pages, num_days);
-
     const fd = new FormData();
     fd.append('file', new Blob([modifiedBytes], { type: 'application/pdf' }), 'journal.pdf');
     fd.append('upload_preset', CLOUDINARY_PRESET);
@@ -287,7 +280,6 @@ app.post('/process-pdf', async (req, res) => {
     );
     if (!cloudResp.ok) throw new Error(`Cloudinary: ${await cloudResp.text()}`);
     const { secure_url } = await cloudResp.json();
-
     res.set(cors).json({ url: secure_url });
   } catch (err) {
     console.error(err);
